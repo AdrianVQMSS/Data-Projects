@@ -9,3 +9,5 @@ The team members included:
 · Shengkang (Tobias) Zhou  
 · Tazz Orchi  
 · Xiuyuan Shen  
+
+[Output of Shiny App coding](https://adrianvarallyay.shinyapps.io/Changes_in_Video_Game_Landscape/)
