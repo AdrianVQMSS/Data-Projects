@@ -8,4 +8,4 @@ Master Thesis (PDF include in repo) examined the relationship between rates of m
 •	While statistical significance was not achieved, the study highlights that certain violence measures in the top ten movies are increasing annually, paralleling the rising rates of real-world violence  
 
 ### IMPORTANT NOTE:   
-1 dataset, from the Uniform Crime Report, was too large of a file to upload, even after compression. The zip file was still 298.5 MB after compression. Unfortunately, this data set couldn't be uploaded to the repository. Please note the UCR .Rmd file will return an error for lack of .tsv file.
+1 dataset, from the Uniform Crime Report, was too large of a file to upload, even after compression the zip file was still 298.5 MB. Unfortunately, this data set couldn't be uploaded to the repository. Please note the UCR .Rmd file will return an error for lack of the relevant .tsv file.
