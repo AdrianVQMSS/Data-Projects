@@ -1,0 +1,1063 @@
+---
+title: "Kickstarter Campaign Categories and Listing Sentiments"
+author: "Adrian Varallyay"
+date: '2022-04-03'
+always_allow_html: yes
+output:
+  html_document:
+    keep_md: yes
+  pdf_document: default
+font-family: Helvetica
+autosize: yes
+---
+
+```{r setup, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# set up and libraries
+require(knitr)
+require(readr)
+require(magrittr)
+require(tidyverse)
+require(ggplot2)
+require(ggthemes)
+require(tm)
+require(tidytext)
+require(wordcloud)
+require(quanteda)
+require(quanteda.textstats)
+require(reshape2)
+require(plotrix)
+require(leaflet)
+require(RColorBrewer)
+require(htmlwidgets)
+
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# read in csv file
+# read in Air bnb listings info
+kick <- read_csv("data/kickstarter_projects_2021-05.csv")
+# create count column for tallying
+kick$count <- 1
+
+pop.df <- tibble(location_state = c("AK", "AL", "AR", "AZ", "CA", "CO", "CT", "DC", "DE", "FL", "GA", 
+                                    "HI", "IA", "ID", "IL", "IN", "KS", "KY", "LA", "MA", "MD", "ME", 
+                                    "MI", "MN", "MO", "MS", "MT", "NC", "ND", "NE", "NH", "NJ", "NM", 
+                                    "NV", "NY", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", 
+                                    "UT", "VA", "VT", "WA", "WI", "WV", "WY"),
+                 popul = c(733391,5024279,3011524,7151502,39538223,5773714,3605944,689545,989948,21538187,
+                           10711908,1455271,3190369,1839106,12812508,6785528,2937880,4505836,4657757, 
+                           7029917,6177224,1362359,10077331, 5706494,6154913, 2961279,1084225,10439388,
+                           779094,1961504,1377529, 9288994,2117522, 3104614,20201249,11799448,3959353,4237256, 
+                           13002700,1097379,5118425,886667,6910840, 29145505,3271616, 8631393,643077, 7705281,
+                           5893718, 1793716,576851),
+                 Latitude = c(32.806671, 61.370716, 33.729759, 34.969704, 36.116203, 39.059811, 41.597782, 39.318523,					
+                              38.897438, 27.766279,	33.040619, 21.094318,	44.240459, 40.349457,	39.849426, 42.011539, 
+                              38.526600, 37.668140,	31.169546, 44.693947,	39.063946, 42.230171,	43.326618, 45.694454,
+                              32.741646, 38.456085, 46.921925, 41.125370, 38.313515, 43.452492, 40.298904, 34.840515,
+                              42.165726, 35.630066,	47.528912, 40.388783, 35.565342, 44.572021,	40.590752, 41.680893,	
+                              33.856892, 44.299782,	35.747845, 31.054487,	40.150032, 44.045876,	37.769337, 47.400902,				
+                              38.491226, 44.268543,	42.755966),
+                 Longitude = c(-86.791130, -152.404419, -111.431221, -92.373123, -119.681564, -105.311104, -72.755371, 
+                               -75.507141, -77.026817, -81.686783, -83.643074, -157.498337, -114.478828, -88.986137, 
+                               -86.258278, -93.210526, -96.726486, -84.670067, -91.867805, -69.381927, -76.802101, -71.530106,
+                               -84.536095, -93.900192, -89.678696, -92.288368, -110.454353, -98.268082, -117.055374, -71.563896,
+                               -74.521011, -106.248482, -74.948051, -79.806419, -99.784012, -82.764915, -96.928917, -122.070938,
+                               -77.209755, -71.511780, -80.945007, -99.438828, -86.692345, -97.563461, -111.862434, -72.710686,
+                               -78.169968, -121.490494, -80.954453, -89.616508, -107.302490)
+                 )
+
+
+kick2 <- left_join(kick, pop.df, by = c("location_state" = "location_state"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# avg achievement ratio, ranked
+kick.f <- kick2 %>%
+  mutate(
+    achievement_ratio = (pledged/goal) * 100
+    ) %>%
+  group_by(top_category) %>%
+  summarize(avg_achievement_ratio = mean(achievement_ratio)) %>%
+  arrange(desc(avg_achievement_ratio)) %>%
+  mutate(
+    avg_achievement_ratio_rank = row_number()
+  ) 
+
+kick.f <- left_join(kick2, kick.f, by = c("top_category" = "top_category"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# total backers, ranked
+kick.b <- kick.f %>%
+  group_by(top_category) %>%
+  summarize(category_total_backers = sum(backers_count)) %>%
+  arrange(desc(category_total_backers)) %>%
+  mutate(
+    category_total_backers_rank = row_number()
+  )
+
+kick.f <- left_join(kick.f, kick.b, by = c("top_category" = "top_category"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# total pledged by category, ranked  
+kick.p <- kick.f %>%
+  group_by(top_category) %>%
+  summarize(avg_category_pledged = mean(pledged)) %>%
+  arrange(desc(avg_category_pledged)) %>%
+  mutate(
+    avg_category_pledged_rank = row_number()
+  )
+
+kick.f <- left_join(kick.f, kick.p, by = c("top_category" = "top_category"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# total count of succesful posts, ranked
+kick.s <- kick.f %>%
+  group_by(state, top_category) %>%
+  summarize(category_total_count = sum(count)) %>%
+  filter(state == "successful") %>%
+  arrange(desc(category_total_count)) %>%
+  mutate(
+    category_rank_by_state = row_number()
+  ) 
+
+
+kick.f <- left_join(kick.f, kick.s, by = c("state" = "state",
+                                           "top_category" = "top_category"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# 1b
+# us total succesful projects by state normalized by population
+usst_count <- kick.f %>%
+  filter(state == "successful") %>%
+  group_by(location_state, popul) %>%
+  summarize(US_state_total_suc_count = sum(count)) %>%
+  mutate(
+    suc_count_nrmlzd = US_state_total_suc_count/popul
+  ) %>%
+  arrange(desc(suc_count_nrmlzd))
+
+suc_rank_by_loc_state <- 1:51
+
+usst_count <- cbind(usst_count, suc_rank_by_loc_state) %>%
+  rename("suc_rank_by_loc_state" = "...5")
+
+# merge back into df
+kick.f <- left_join(kick.f, usst_count, by = c("location_state" = "location_state",
+                                               "popul" = "popul"), keep = FALSE)
+  
+
+# us total succesful projects by town
+ustwn_count <- kick.f %>%
+  filter(state == "successful") %>%
+  group_by(location_town) %>%
+  summarize(US_town_total_suc_count = sum(count)) %>%
+  arrange(desc(US_town_total_suc_count)) %>%
+  mutate(
+    suc_rank_by_town = row_number()
+  ) 
+
+# merge back into df
+kick.f <- left_join(kick.f, ustwn_count, by = c("location_town" = "location_town"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# us most creative state by art/design/crafts/dance/fashion/music
+crt_st <- kick.f %>%
+  filter(top_category == "art" | top_category == "design" |  top_category == "crafts" |  top_category == "dance" |  top_category == "fashion" |  top_category == "music") %>%
+  group_by(location_state) %>%
+  summarize(US_state_creative_count = sum(count)) %>%
+  arrange(desc(US_state_creative_count)) %>%
+  mutate(
+    creative_rank_by_state = row_number()
+  ) 
+
+# merge back into df
+kick.f <- left_join(kick.f, crt_st, by = c("location_state" = "location_state"), keep = FALSE)
+
+# us most creative town by art/design/crafts/dance/fashion/music
+crt_twn <- kick.f %>%
+  filter(top_category == "art" | top_category == "design" |  top_category == "crafts" |  top_category == "dance" |  top_category == "fashion" |  top_category == "music") %>%
+  group_by(location_town) %>%
+  summarize(US_town_creative_count = sum(count)) %>%
+  arrange(desc(US_town_creative_count)) %>%
+  mutate(
+    creative_rank_by_town = row_number()
+  ) 
+
+# merge back into df
+kick.f <- left_join(kick.f, crt_twn, by = c("location_town" = "location_town"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# plot for most succesful states
+rankp <- ggplot(subset(filter(kick.f, suc_rank_by_loc_state <= 10)), 
+                aes(x = reorder(location_state, US_state_total_suc_count), 
+                    y = log10(US_state_total_suc_count), 
+                    fill = as.factor(ifelse(location_state == "CA", "#E69F00", "#999999")))) 
+
+rankp.p <- rankp + geom_col() +
+  scale_fill_manual(values=c("#999999","#E69F00")) +
+  scale_y_continuous("Total Number of Succesful Projects", breaks = scales::breaks_extended(n = 3), labels = c("0","10000","14500")) +
+  coord_flip() +
+  theme_tufte() +
+  labs(title = 'Top 10 States with the Most Successful Kickstarter Projects', subtitle = "(Normalized by Population)") +
+  #ylab("Total Successful Projects") +
+  xlab("") +
+  theme(legend.position="none")
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# for leaflet
+# subset df by ranking category creative_rank_by_state <= 50 | creative_rank_by_town <= 50
+for_leaf <- subset(filter(kick.f, creative_rank_by_state <= 50 | creative_rank_by_town <= 50))
+
+
+# Grab a palette
+pal = colorFactor("Set1", domain = c(for_leaf$creative_rank_by_state, for_leaf$creative_rank_by_town)) 
+color_ranking = pal(c(for_leaf$creative_rank_by_state, for_leaf$creative_rank_by_town))
+
+# set tooltip info
+content <- paste("State:",for_leaf$location_state,"<br/>",
+                 "State Population:",for_leaf$popul,"<br/>",
+                 "Total Successful Creative Projects:",for_leaf$US_state_creative_count,"<br/>",
+                 "Creativity Rank:",for_leaf$creative_rank_by_state,"<br/>",
+                 "Total Successful Projects:",for_leaf$US_state_total_suc_count,"<br/>")
+
+# set leaflet object (base map)
+m <- leaflet(for_leaf) %>%
+  addProviderTiles("Stamen.TonerLite") 
+
+# add points to map
+# include details: color, popup, clustering, and legend 
+mm <-  addCircleMarkers(m,
+                     col=color_ranking,
+                     popup = content,
+                     clusterOptions = markerClusterOptions()) %>%
+  addLegend(pal = pal, values = ~for_leaf$creative_rank_by_state, title = "Top 50 Creative States")
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# Top 10 Categories on Kickstarter
+# by successful projects
+g <- ggplot(filter(kick.f, category_rank_by_state <= 10) , aes(x = reorder(top_category, category_total_count), y = category_total_count, fill = as.factor(ifelse(top_category == "music", "#E69F00", "#999999"))))
+
+suc <- g + geom_col() +
+  scale_fill_manual(values=c("#999999","#E69F00")) +
+  scale_y_continuous("Total Number of Succesful Projects", breaks = scales::breaks_extended(n = 3), labels = c("0","10000","14000")) +
+  coord_flip() +
+  theme_tufte() +
+  labs(title = 'Top 10 Categories on Kickstarter', subtitle = 'by Total Number of "Succesful" Projects') +
+  xlab("") +
+  theme(legend.position="none")
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# Top 10 Categories on Kickstarter
+# by number of backers
+g2 <- subset(filter(kick.b, category_total_backers_rank <= 10)) %>%
+               ggplot(aes(x = reorder(top_category, category_total_backers), y = category_total_backers, 
+                          fill = as.factor(ifelse(top_category == "technology", "#E69F00", "#999999"))))
+
+bac <- g2 + geom_col() +
+  scale_fill_manual(values=c("#999999","#E69F00")) +
+  scale_y_continuous("Total number of backers", breaks = scales::breaks_extended(n = 3), labels = c("0", "2 million", "4 million")) +
+  coord_flip() +
+  theme_tufte() +
+  labs(title = "Top 10 Categories on Kickstarter", subtitle = 'by Total Number of Backers') +
+  xlab("") +
+  theme(legend.position="none")
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# Top 10 Categories on Kickstarter
+# by Average Amount Pledged
+g3 <- subset(filter(kick.f, avg_category_pledged_rank <= 10)) %>%
+               ggplot(aes(x = reorder(top_category, avg_category_pledged, "sum"), y = avg_category_pledged, 
+                          fill = as.factor(ifelse(top_category == "technology", "#E69F00", "#999999"))))
+
+ple <- g3 + geom_col() +
+  scale_fill_manual(values=c("#999999","#E69F00")) +
+  scale_y_continuous("Average Amount Pledged", breaks = scales::breaks_extended(n = 3), labels = c("0", "$46k", "$50k")) +
+  coord_flip() +
+  theme_tufte() +
+  labs(title = "Top 10 Categories on Kickstarter", subtitle = 'by Category Average Amount Pledged') +
+  xlab("") +
+  theme(legend.position="none")
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+#Q2
+# new df with achievement ratio and ranking, plus avg achievement ratio
+kick.word <- kick %>%
+  mutate(
+    achievement_ratio = (pledged/goal) * 100
+    ) %>%
+  mutate(
+    avg_achievement_ratio = mean(achievement_ratio)
+    ) %>%
+  arrange(desc(achievement_ratio)) %>%
+  mutate(
+    achievement_ratio_rank = row_number()
+  )
+
+# achievement ratio ranking for "succesful"
+kick.suc <- kick.word %>%
+  arrange(desc(achievement_ratio)) %>%
+  filter(state == "successful") %>%
+  mutate(
+    suc_achievement_ratio_rank = row_number()
+  ) %>%
+  select(id, suc_achievement_ratio_rank)
+  
+# achievement ratio ranking for "failed"
+kick.fail <- kick.word %>%
+  arrange(desc(achievement_ratio)) %>%
+  filter(state == "failed") %>%
+  mutate(
+    fail_achievement_ratio_rank = row_number()
+  ) %>%
+  select(id, fail_achievement_ratio_rank)
+
+# merge for new df
+kick.word2 <- left_join(kick.word, kick.suc, by = c("id" = "id"), keep = FALSE)
+kick.word2 <- left_join(kick.word2, kick.fail, by = c("id" = "id"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# select most succesful (largest achievement ratios) "succesful" and "failed" projects
+kick.word2 <- kick.word2 %>%
+  filter(suc_achievement_ratio_rank <= 1480 | fail_achievement_ratio_rank <= 1480) %>%
+  # create column for difference from average achievement ratio (+ = over avg/- = under avg)
+  mutate(achievement_dif_from_avg = achievement_ratio - avg_achievement_ratio
+         ) %>%
+  # prune df to needed columns
+  select(id, name, blurb, state, top_category, 
+         achievement_ratio, achievement_ratio_rank, 
+         suc_achievement_ratio_rank, fail_achievement_ratio_rank)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# make blurb character
+kick.word2$text <- as.character(kick.word2$blurb)
+text <- kick.word2 
+text2 <- text
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# convert emojis
+text2$text <- str_trim(gsub("\\p{So}|\\p{Cn}", " ", text$text, perl = TRUE))
+# remove all caps words
+text2$text <- str_trim(gsub("[A-Z]{2,}", " ", text2$text))
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# remove garbage
+text2$text <- str_trim(gsub("\\r", " ", text2$text, fixed = T))
+text2$text <- str_trim(gsub("\n", " ", text2$text, fixed = T))
+text2$text <- str_trim(gsub("w/", " ", text2$text, fixed = T))
+text2$text <- str_trim(gsub("\\u", " ", text2$text, fixed = T))
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# remove numbers
+text2$text <- str_trim(removeNumbers(text2$text))
+
+#remove stopwords
+text2$text <- str_trim(removeWords(tolower(text2$text), stopwords("en")))
+
+#remove 1-2 letter words
+#gsub("(\\w\\w)\\W+\\w\\W+(\\w\\w)", "\\1 \\2", text3)
+text2$text <- gsub(" *\\b[[:alpha:]]{1,2}\\b *", " ", text2$text)
+
+# remove punc
+#text2$text <- str_trim(gsub("[[:punct:]]+", " ", text2$text))
+text2$text <- removePunctuation(text2$text)
+
+# remove excessive spacing
+#gsub("^ +| +$|( ) +", "\\1", text3)
+text2$text <- stripWhitespace(text2$text)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# corpus
+df_corpus <- text2 %>%
+  rename("doc_id" = "id") %>%
+  DataframeSource() %>%
+  VCorpus()
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# document term matrix
+kick_tdm <- TermDocumentMatrix(df_corpus)
+kick_mtrx <- as.matrix(kick_tdm)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# tidy
+kick_td <- tidy(kick_tdm)
+
+# get term frequency measures
+kick_tf_idf <- kick_td %>%
+  bind_tf_idf(term, document, count) %>%
+  arrange(desc(tf_idf))
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# join frequency measures with original df
+kick_tf_idf$document <- as.numeric(kick_tf_idf$document)
+kick_tf_idf <- left_join(kick_tf_idf, text2, by = c("document" = "id"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# word cloud prep
+# word cloud word removal
+kick_tf_idf.suc <- kick_tf_idf %>%
+  filter(state == "successful" & suc_achievement_ratio_rank <= 100) %>%
+  filter(!term %in% c("etc", "pre", "new"))
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# word cloud prep
+# change color to green/blues
+gn_blu <- brewer.pal(10, "GnBu")
+gn_blu <- gn_blu[-(1:2)]
+
+or_red <- brewer.pal(10, "OrRd")
+or_red <- or_red[-(1:2)]
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# get terms total counts
+count_terms <- kick_tf_idf %>%
+  group_by(term) %>%
+  summarize(total_term_count = sum(count)) %>%
+  arrange(desc(total_term_count))
+
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# successful terms count
+suc_terms <- kick_tf_idf %>%
+  filter(state == "successful") %>%
+  group_by(term) %>%
+  summarize (suc_term_totals = sum(count)) %>%
+  arrange(desc(suc_term_totals)) 
+
+# merge back into original df
+pyramid <- left_join(count_terms, suc_terms, by = c("term" = "term"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# failed terms count
+fail_terms <- kick_tf_idf %>%
+  filter(state == "failed") %>%
+  group_by(term) %>%
+  summarize (fail_term_totals = sum(count)) %>%
+  arrange(desc(fail_term_totals))
+
+# merge back into original df
+pyramid <- left_join(pyramid, fail_terms, by = c("term" = "term"), keep = FALSE)
+
+#new full df
+kick.f <- left_join(kick_tf_idf, pyramid, by = c("term" = "term"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+
+# get readability measures
+readability <- textstat_readability(kick.f$text, 
+        measure=c('Flesch','Flesch.Kincaid',
+                  'meanSentenceLength','meanWordSyllables')) 
+
+# merge with original df
+kick.df <- cbind(kick.f,readability)
+
+# clean up a bit
+kick.df <- kick.df[-c(7,8,19)]
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# Plot successful
+successfulp <- ggplot(data=subset(filter(kick.df, state == "successful")), 
+                      aes(x=Flesch.Kincaid,y= log(achievement_ratio), 
+                          size=achievement_ratio)) + 
+  geom_point(alpha = 0.5, 
+             col = "green3") +
+  geom_smooth(color = "gray19") +
+  guides(size=FALSE) +
+  theme_tufte(ticks = TRUE) +
+  labs(title = "Kickstarter Successful Projects", subtitle = "Success by Readability Measures") +
+  xlab("Flesch-Kincaid Grade Level")  +
+  ylab("Achievement Ratio (logged)") 
+
+# Plot failed
+failedp <- ggplot(data=subset(filter(kick.df, state == "failed")), 
+                  aes(x=Flesch.Kincaid,y= abs(log(achievement_ratio_rank) -11) +4, 
+                      size=achievement_ratio)) +
+  geom_point(alpha = 0.5, 
+             col = "brown3") +
+  geom_smooth(color = "gray19") +
+  guides(size=FALSE) +
+  theme_tufte(ticks = TRUE) +
+  labs(title = "Kickstarter Failed Projects", subtitle = "Success by Readability Measures") +
+  xlab("Flesch-Kincaid Grade Level")  +
+  ylab("Achievement Ratio (logged)")
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# plot all with 1 and 2 trend lines
+fullp <- ggplot(kick.df, aes(x=Flesch.Kincaid,y= log(achievement_ratio), size=achievement_ratio), color = ifelse(kick.df$state == "successful","green3","brown3")) + 
+  geom_point(alpha = 0.5, 
+             aes(col = state)) +
+  geom_smooth(color = "gray19", show.legend=FALSE) + 
+  scale_color_manual(values = c("brown3","green3")) +
+  guides(size=FALSE) + 
+  theme_tufte(ticks = TRUE) +
+  labs(title = "Kickstarter Projects", subtitle = "Success by Readability Measures", color="Status") +
+  xlab("Flesch-Kincaid Grade Level")  +
+  ylab("Achievement Ratio (logged)")
+
+# "state" independent trend lines
+fullp2 <- ggplot(kick.df, aes(x=Flesch.Kincaid,y= log(achievement_ratio), size=achievement_ratio), color = ifelse(kick.df$state == "successful","green3","brown3")) + 
+  geom_point(alpha = 0.5, 
+             aes(col = state)) +
+  geom_smooth(color = "gray19", method="loess", se=T, aes(linetype=state), show.legend=FALSE) + 
+  scale_color_manual(values = c("brown3","green3")) +
+  guides(size=FALSE) + 
+  theme_tufte(ticks = TRUE) +
+  labs(title = "Kickstarter Projects", subtitle = "Success by Readability Measures", color="Status") +
+  xlab("Flesch-Kincaid Grade Level")  +
+  ylab("Achievement Ratio (logged)")
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# Q3
+# unnest words in text
+try <- kick.df %>%
+  unnest_tokens(word,text)
+
+# get bing dictionary words w/ sentiments
+bing <- get_sentiments("bing")
+
+# get bing word and sentiment and stream line df
+try2 <- try %>%
+  inner_join(bing) %>%
+  select(document, word, sentiment) %>%
+  distinct(document, word, sentiment)
+
+# merge back into original df
+try <- left_join(try, try2, by = c("document" = "document",
+                            "word" = "word"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# get positive and negative word counts, get total word counts
+try3 <- try2 %>%
+  group_by(document) %>%
+  count(sentiment)  %>% 
+  rename(pos.neg_n = n) %>%
+  arrange(document)%>%
+  group_by(document) %>%
+  mutate(total_pos.neg_n = sum(pos.neg_n))
+
+# create pos/neg word value
+try3$word_value <- ifelse(try3$sentiment == "negative", -1, 1)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# listing sentiment values
+# get project sentiment values
+try4 <- try3 %>%
+  mutate(
+    prjct_pos.neg_sent_value = word_value * pos.neg_n
+  ) 
+
+# get project total sentiment values
+try4a <- try4 %>%
+  group_by(document) %>%
+  summarize(prjct_total_sent_value = sum(prjct_pos.neg_sent_value))
+
+# consolidate df
+try5 <- left_join(try4,try4a, by = c("document" = "document"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# get each project tone
+try5a <- try5 %>%
+  distinct(document,total_pos.neg_n, prjct_total_sent_value) %>%
+  mutate(
+    prjct_tone = prjct_total_sent_value/total_pos.neg_n
+  ) 
+
+# get whole document tone
+try5a$doc_tone <- sum(try5a$prjct_tone)/2010
+
+# consolidate df
+try6 <- left_join(try5,try5a, by = c("document" = "document",
+                                     "total_pos.neg_n" ="total_pos.neg_n",
+                                     "prjct_total_sent_value" = "prjct_total_sent_value"), keep = FALSE)
+
+# prep to merge in achievement ratio
+try6a <- try %>%
+  group_by(document) %>%
+  select(document, achievement_ratio)
+
+# merge achievement ratio into df
+try.f <- left_join(try6,try6a, by = c("document" = "document"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# sentiments plot
+senti <- ggplot(try.f, aes(x=prjct_tone,y= log(achievement_ratio)), 
+                color = ifelse(try.f$sentiment=="positive","deepskyblue1","azure4"), size = 0.5) + 
+  geom_point(alpha = 0.5, 
+             col = ifelse(try.f$sentiment=="positive","deepskyblue1","azure4")) +
+  geom_jitter(col = ifelse(try.f$sentiment=="positive","deepskyblue1","azure4"), 
+              width = 0.01, height = 0.01) +
+  ggplot2::annotate(geom="text", x=0.6, y = 14,
+                    label="0.42\nWhole\nDocument\nTone\nscore",
+                    color="black", size = 2) +
+  geom_smooth(color = "gray19") +
+  geom_vline(xintercept = 0.4240291, color = "lightcoral", size = 0.5 ) +
+  facet_wrap(vars(sentiment)) +  
+  theme_tufte(ticks = TRUE) +
+  labs(title = "Kickstarter Project Listings Sentiments", subtitle = "Success by Tone Measures") +
+  xlab("Project Tone Score")  +
+  ylab("Achievement Ratio (logged)")
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# start new df
+senti.df <- try[-c(8,(10:15),18,19)] 
+
+# merge  back into df
+senti.df <-left_join(senti.df, try.f, by = c("document" = "document",
+                                             "sentiment" = "sentiment",
+                                             "achievement_ratio" = "achievement_ratio"), keep = FALSE)
+
+# get/add text
+port <- text2[c(1,10)]
+
+# merge text back into df
+senti.df <-left_join(senti.df, port, by = c("document" = "id"), keep = FALSE)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# sentiment docs: pos + neg
+# merge polarity
+polarity <- senti.df[c(2,18)]
+
+# merge text back into df
+pvn <- left_join(text2, polarity, by= c("id" = "document"), keep =FALSE)
+
+#separate by polarity score
+# positive doc 
+pvn.pos <- pvn %>%
+  filter(prjct_tone > 0) %>%
+  arrange(id) 
+
+# negative doc 
+pvn.neg <- pvn %>%
+  filter(prjct_tone < 0) %>%
+  arrange(id) 
+
+# get distinct listings positive
+pvn.pos <- pvn.pos %>%
+  group_by(id, text) %>%
+  distinct(id, text, achievement_ratio, prjct_tone) %>%
+  ungroup()
+
+# get distinct listings positive
+pvn.neg <- pvn.neg %>%
+  group_by(id, text) %>%
+  distinct(id, text, achievement_ratio, prjct_tone) %>%
+  ungroup()
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# corpus positive
+df_corpus2.p <- pvn.pos %>%
+  rename(doc_id =id) %>%
+  DataframeSource() %>%
+  VCorpus()
+
+# document term matrix
+pvn.p<- DocumentTermMatrix(df_corpus2.p)
+pvn_mtrx.p <- as.matrix(pvn.p)
+
+# corpus negative
+df_corpus2.n <- pvn.neg %>%
+  rename(doc_id =id) %>%
+  DataframeSource() %>%
+  VCorpus()
+
+# document term matrix
+pvn.n <- DocumentTermMatrix(df_corpus2.n)
+pvn_mtrx.n <- as.matrix(pvn.n)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# tidy
+pvn.p_td <- tidy(pvn.p)
+pvn.n_td <- tidy(pvn.n)
+
+# get term frequency measures
+pvn.p_td_tf_idf <- pvn.p_td %>%
+  bind_tf_idf(term, document, count) %>%
+  arrange(desc(tf_idf))
+  
+  
+# get term frequency measures
+pvn.n_td_tf_idf <- pvn.n_td %>%
+  bind_tf_idf(term, document, count) %>%
+  arrange(desc(tf_idf))
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# convert document
+pvn.p_td_tf_idf$document <- as.numeric(pvn.p_td_tf_idf$document)
+pvn.n_td_tf_idf$document <- as.numeric(pvn.n_td_tf_idf$document)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# make corpus
+pos_pol_corpus <- corpus(df_corpus2.p) 
+neg_pol_corpus <- corpus(df_corpus2.n)
+
+# Regressive Imagery dictionary
+# primordial / conceptual thinking
+RID_dictionary <- dictionary(file="data/RID.cat",
+                             format = "wordstat")
+# make a dfm based on the dictionary
+DTM_RIDdict.p <- dfm(pos_pol_corpus, dictionary=RID_dictionary)
+DTM_RIDdict.n <- dfm(neg_pol_corpus, dictionary=RID_dictionary)
+
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# Make DFM into data frame to plot with ggplot
+RIDdf.p <- melt(as.matrix(DTM_RIDdict.p))
+RIDdf.n <- melt(as.matrix(DTM_RIDdict.n))
+
+RIDdf.p$docs <- str_split_fixed(RIDdf.p$docs, "-", 2)[,1]
+RIDdf.n$docs <- str_split_fixed(RIDdf.n$docs, "-", 2)[,1]
+
+RIDdf.p <- as_data_frame(RIDdf.p)
+RIDdf.n <- as_data_frame(RIDdf.n)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# merge in achievement ratio
+# positive
+pvn.pos.f <- pvn.pos %>%
+  mutate(
+    row = row_number()
+  ) %>%
+  mutate(
+    doc_num = paste0("text", row)
+  ) %>%
+  select(achievement_ratio) 
+
+RIDdf.p <- cbind(RIDdf.p, pvn.pos.f)
+
+#negative
+pvn.neg.f <- pvn.neg %>%
+  mutate(
+    row = row_number()
+  ) %>%
+  mutate(
+    doc_num = paste0("text", row)
+  ) %>%
+  select(achievement_ratio) 
+
+RIDdf.n <- cbind(RIDdf.n, pvn.neg.f)
+
+
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# select only emotion features
+RIDdf.p <- RIDdf.p %>%
+  filter(features == "EMOTIONS.POSITIVE_AFFECT"| features == "EMOTIONS.ANXIETY"| 
+  features == "EMOTIONS.SADNESS" | features == "EMOTIONS.AFFECTION"| features ==  "EMOTIONS.AGGRESSION") 
+
+RIDdf.n <- RIDdf.n %>%
+  filter(features == "EMOTIONS.POSITIVE_AFFECT"| features == "EMOTIONS.ANXIETY"| 
+  features == "EMOTIONS.SADNESS" | features == "EMOTIONS.AFFECTION" | features ==  "EMOTIONS.AGGRESSION")
+
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# deconstruct to rename features
+# positive
+fact1 <- subset(RIDdf.p, Factor = "EMOTIONS.POSITIVE_AFFECT")
+fact1$features <- ifelse(fact1$features == "EMOTIONS.POSITIVE_AFFECT","POSITIVE AFFECT",NA)
+
+
+fact2 <- subset(RIDdf.p, Factor = "EMOTIONS.ANXIETY")
+fact2$features <- ifelse(fact2$features == "EMOTIONS.ANXIETY","ANXIETY",NA)
+
+
+fact3 <- subset(RIDdf.p, Factor = "EMOTIONS.SADNESS")
+fact3$features <- ifelse(fact3$features == "EMOTIONS.SADNESS","SADNESS",NA)
+
+
+fact4 <- subset(RIDdf.p, Factor = "EMOTIONS.AFFECTION")
+fact4$features <- ifelse(fact4$features == "EMOTIONS.AFFECTION","AFFECTION",NA)
+
+fact5 <- subset(RIDdf.p, Factor = "EMOTIONS.AGGRESSION")
+fact5$features <- ifelse(fact5$features == "EMOTIONS.AGGRESSION","AGGRESSION",NA)
+
+# negative
+fact6 <- subset(RIDdf.n, Factor = "EMOTIONS.POSITIVE_AFFECT")
+fact6$features <- ifelse(fact6$features == "EMOTIONS.POSITIVE_AFFECT","POSITIVE_AFFECT",NA)
+
+
+fact7 <- subset(RIDdf.n, Factor = "EMOTIONS.ANXIETY")
+fact7$features <- ifelse(fact7$features == "EMOTIONS.ANXIETY","ANXIETY",NA)
+
+
+fact8 <- subset(RIDdf.n, Factor = "EMOTIONS.SADNESS")
+fact8$features <- ifelse(fact8$features == "EMOTIONS.SADNESS","SADNESS",NA)
+
+
+fact9 <- subset(RIDdf.n, Factor = "EMOTIONS.AFFECTION")
+fact9$features <- ifelse(fact9$features == "EMOTIONS.AFFECTION","AFFECTION",NA)
+
+fact10 <- subset(RIDdf.n, Factor = "EMOTIONS.AGGRESSION")
+fact10$features <- ifelse(fact10$features == "EMOTIONS.AGGRESSION","AGGRESSION",NA)
+
+# put back together
+RIDdf.p <- rbind(fact1, fact2, fact3, fact4, fact5)
+RIDdf.n <- rbind(fact6, fact7, fact8, fact9, fact10)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# create factor columns for ordering in plot# positive
+RIDdf.p$facet <- as.list(RIDdf.p$features)
+RIDdf.p$facet = factor(RIDdf.p$facet, levels = c(NA, "POSITIVE AFFECT", "AFFECTION", "AGGRESSION","ANXIETY","SADNESS"))
+
+# negative
+RIDdf.n$facet <- as.list(RIDdf.n$features)
+RIDdf.n$facet = factor(RIDdf.n$facet, levels = c(NA, "POSITIVE AFFECT", "AFFECTION", "AGGRESSION","ANXIETY","SADNESS"))
+
+
+               
+
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# plot positive polarity document
+pos.pol <- ggplot(subset(RIDdf.p, !is.na(facet)),  aes(x=log(achievement_ratio), y=value), size = 0.7, alpha = 0.6 ) + 
+  geom_point() +
+  geom_jitter(aes(color = features), width = 0.02, height = 0.02) +
+  geom_smooth(color = "gray19") + 
+  theme_tufte(ticks = TRUE)  +
+  facet_wrap(vars(facet)) +
+  labs(title = "Kickstarter Project Listings Sentiments: Positive Polarity", subtitle = "Success by Emotion Measures") +
+  xlab(" Emotion Score")  +
+  ylab("Achievement Ratio (logged)") +
+  theme(legend.position="none")
+  
+# plot negative polarity document
+neg.pol <- ggplot(subset(RIDdf.n, !is.na(facet)),  aes(x=log(achievement_ratio), y=value), size = 0.7, alpha = 0.6 ) + 
+  geom_point() +
+  geom_jitter(aes(color = features), width = 0.02, height = 0.02) +
+  geom_smooth(color = "gray19") + 
+  theme_tufte(ticks = TRUE)  +
+  facet_wrap(vars(facet)) +
+  labs(title = "Kickstarter Project Listings Sentiments: Negative Polarity", subtitle = "Success by Emotion Measures") +
+  xlab("Emotion Score")  +
+  ylab("Achievement Ratio (logged)") +
+  theme(legend.position="none")
+```
+
+###1. Identifying Successful Projects  
+#####a) Success by Category  
+
+(note for bar charts: I highlight the top category/state with a dull/burnt yellow)  
+
+In the first visualization, I used the summed number of successful projects for each *top_category*. Note the positions of music (1st) and technology (5th). Projects that fall under the category of "music" appear to be more successful than projects in other categories.  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# call visualizations
+suc
+```
+
+For the second visualization, I used the summed number of backers for each *top_category*. Note the positions of music (6th) and technology (1st). Projects that fall under the category of "technology" appear to have more backers than projects in other categories.  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+bac
+```
+
+I decided to look at one more measure. For the third visualization, I used the averaged amount pledged for each *top_category*. Note the positions of music (5th) and technology (1st). Projects that fall under the category of "technology" appear to have a higher average pledge amount (between projects).  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+ple
+```
+
+#####BONUS ONLY: b) Success by Location  
+
+For this visualization I normalized each state's total number of successful projects by its population (*"total number of projects by state"/"state population"*). California and New York are the top two states with the most number of successful projects, by far.  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+rankp.p
+```
+
+This visualization is the interactive leaflet map of the top 50 most creative states and top 50 most creative cities/towns.  
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# leaflet for most creative states/cities
+mm
+```
+
+###2. Writing your success story    
+#####a) Cleaning the Text and Word Cloud    
+
+Word cloud of max size 100 of most successful projects.  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+set.seed(2103)
+wordcloud(kick_tf_idf.suc$term, kick_tf_idf.suc$tf,
+          max.words = 100, colors= gn_blu)
+```
+
+#####b) Success in words  
+
+Below is the pyramid plot of the top 20 shared words between successful and failed projects.  
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# pyramid plot for top 20 shared Words between successful and failed projects
+pyramid_top20 <- pyramid[1:20,] %>%
+  arrange(desc(term))
+
+py <- pyramid.plot(pyramid_top20$suc_term_totals, pyramid_top20$fail_term_totals,
+             labels = pyramid_top20$term,
+             show.values = FALSE,
+             lxcol = "green3",
+             rxcol = "brown3",
+             gap = 20,
+             top.labels = c("Successful Projects", "", "Failed Projects"),
+             main = "Words in Common between Successful and Failed Kickstarter Projects",
+             laxlab = c(0,25,50,75,100,125),
+             raxlab = c(0,25,50,75,100, 125),
+             unit = NULL,
+             labelcex=0.5)
+
+
+```
+
+#####c) Simplicity as a virtue  
+
+The following visualization captures the relationship between the readability measure (Flesh Kincaid grade level) and achievement ratio. There isn't too much of a stark contrast between failed and successful projects for the Flesh Kincaid grade levels between 5 and about 21, intuitively however, there are much higher achievement ratios among the successful projects in this same range. The real contrast is at the tails. There are more successful projects as compared to failed projects in the very low and very high ends of the scale for the Flesh Kincaid grade levels (< 0 | > 25).  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+#successfulp
+fullp
+```
+
+Same visualization as above but with separated trend lines. There is no change between Flesh Kincaid grade levels and achievement ratio for *failed* projects. We truly only see "noticeable" variation beginning at about the 25th Flesh Kincaid grade level or so.  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+#failedp
+fullp2
+
+
+```
+
+###3. Sentiment  
+#####a) Stay positive  
+
+The below visualization captures the relationship between *tone score* and *achievement ratio*. The whole document (all project blurbs) received a tone score of about 0.42. Intuitively, the projects that fell into the negative tone category had projects with less than -0.5, whereas projects categorized with positive tone did not. Conversely, the projects that fell into the positive tone category had projects with greater than 0.5, whereas projects categorized with negative tone did not.  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# sentiment plot
+senti
+```
+
+#####b) Positive vs negative  
+
+Word cloud of max size 100 of positive tone projects. 
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+set.seed(2103)
+wordcloud(pvn.p_td_tf_idf$term, pvn.p_td_tf_idf$tf,
+          max.words = 100, colors= gn_blu)
+```
+
+Word cloud of max size 100 of negative tone projects. 
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+set.seed(2103)
+wordcloud(pvn.n_td_tf_idf$term, pvn.n_td_tf_idf$tf,
+          max.words = 100, colors= or_red)
+```
+I don't know if this makes sense, but I feel like the actual words among the positive are "softer" (and not just because of color), for instance, *cute, share, love, soft, support*, etc. Whereas among the negative, the actual words feel harder, for instance, *rule, hard, harness, dirty, earth*, etc.  
+  
+  
+  
+#####c) Get in their mind  
+  
+Visualization capturing the relation ship between *emotion measures* and *achievement ratio*: positive polarity.  
+
+There is a slight uptick in achievement ratio for higher levels of *AFFECTION*.  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+pos.pol
+```
+
+Visualization capturing the relation ship between *emotion measures* and *achievement ratio*: negative polarity.  
+
+There is variation in achievement ratio for levels of *AGGRESSION*, but not much. It appears that projects with aggression levels at about 4-5, seem to have the highest achievement ratio scores compared to the other emotion measures.
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+neg.pol
+```
