@@ -8,3 +8,6 @@ Graphing Winter Olympic medal wins overtime by Country
 - Most successful athletes
 - Interactive graphs
 - Data table
+
+
+An html of the ouput ha sbeen included.
