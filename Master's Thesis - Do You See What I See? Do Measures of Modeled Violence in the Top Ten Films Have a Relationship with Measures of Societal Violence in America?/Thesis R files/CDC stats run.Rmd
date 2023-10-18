@@ -1,0 +1,526 @@
+---
+title: "Appendix 2a:" 
+subtitle: "Center for Disease Control and Prevention (CDC) Analysis Results"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+## load packages
+require(readxl)
+require(data.table)
+require(tidyverse)
+require(dplyr)
+require(car)
+require(lmtest)
+require(sandwich)
+require(psych)
+require(tseries)
+require(fUnitRoots)
+require(urca)
+require(TSA)
+require(forecast)
+require(ggplot2)
+require(ggthemes)
+require(corrplot)
+require(sjPlot)
+require(gridExtra)
+```
+
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# read in data files
+# Compressed Mortality CDC 1968-2016
+cdc <- read_excel("/Data/CDC_film_6816_rates.xlsx")
+
+# number of deaths by year
+by_yr <- read_excel("/Data/CDC_deaths_by_YR.xlsx")
+```
+
+### Section 1
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# df set
+# vars and correlation
+cdc_cor <- cdc[,c(1,8:11,14:16,21)]
+
+# rename vars
+cdc_cor <- cdc_cor[,1:8] %>%
+  rename(`Single Act` = single_rate,
+         `Multiple Acts` = multiple_rate,
+         `Single Act w/G` = single_rate_gun,
+         `Multiple Acts w/G` = multiple_rate_gun,
+         `FA Weapons Ban` = `FAWB (tighten)`,
+         `Major US Military Involvement` = `Major military involvement`)
+
+# aggregate and get means 
+cdc_cor <- aggregate(subset(cdc_cor, sel = -Year), list(year = cdc_cor$Year), mean, na.rm=T)
+cdc_cor <- cdc_cor %>%
+  rename(Year =year)
+
+# add yearly deaths
+deaths <- by_yr[,1:2] %>%
+  rename(`Deaths per Year` = Deaths)
+
+# merge in deaths Over Time
+cdc_cor <- merge(cdc_cor,deaths, by= "Year")
+cdc_core <- cdc_cor
+
+# make into ts object
+cdc_cor_ts <- ts(cdc_cor)
+```
+
+### Descriptive Statistics
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# correlations and visualizations
+# descriptives
+tab_df(describe(cdc_cor_ts),
+  title = "Centers for Disease Control",
+  show.rownames = TRUE)
+```
+
+### Correlations
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# create a cdc correlation matrix
+cdc_cor_matrix <- cor(cdc_cor_ts, use = "complete.obs")
+tab_corr(cdc_cor_matrix)
+```
+
+### Visualizations
+### Correlation Table
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# create a cdc correlation plot
+corrplot(cdc_cor_matrix[c(1:5,9),c(1:5,9)], method = "number",number.cex = 0.9, tl.col = "black", tl.cex = 0.95, tl.offset = 0.2)
+```
+
+### Independent and Dependent Variable Time Trends   
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# cdc objects for gg plot
+# Single Act
+cdc_single <- cdc_core %>%
+  group_by(Year,`Single Act`) %>%
+  distinct(.keep_all = FALSE) %>%
+  summarise()
+
+# Multiple Act
+cdc_multi <- cdc_core %>%
+  group_by(Year,`Multiple Acts`) %>%
+  distinct(.keep_all = FALSE) %>%
+  summarise()
+
+# Single Act w/Gun
+cdc_single_gun <- cdc_core %>%
+  group_by(Year,`Single Act w/G`) %>%
+  distinct(.keep_all = FALSE) %>%
+  summarise()
+
+# Multiple Act w/Gun
+cdc_multi_gun <- cdc_core %>%
+  group_by(Year,`Multiple Acts w/G`) %>%
+  distinct(.keep_all = FALSE) %>%
+  summarise()
+```
+
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# cdc movie ggplots
+# Single Act
+cdc_sing <- ggplot(data = cdc_single, aes(x = Year, y = `Single Act`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Rates of Top Ten Movies with a Single Modeled Act \nof Violence Over Time",
+       subtitle = "Modeled Act w/o Firearm",
+       x = "Year",
+       y = "Single Modeled Act of Violence (Rates)") +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Multiple Act
+cdc_multi <- ggplot(data = cdc_multi, aes(x = Year, y = `Multiple Acts`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Rates of Top Ten Movies with Multiple Modeled Acts \nof Violence Over Time",
+       subtitle = "Modeled Acts w/o Firearms",
+       x = "Year",
+       y = "Multiple Modeled Acts of Violence (Rates)") +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+   # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+  
+
+# Single Act w/Gun
+cdc_sing_gun <- ggplot(data = cdc_single_gun, aes(x = Year, y = `Single Act w/G`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Rates of Top Ten Movies with a Single Modeled Act \nof Violence Over Time",
+       subtitle = "Modeled Act w/ Firearm",
+       x = "Year",
+       y = "Single Modeled Acts of Violence (Rates)") +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+   # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Multiple Act w/Gun
+cdc_multi_gun <- ggplot(data = cdc_multi_gun, aes(x = Year, y = `Multiple Acts w/G`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Rates of Top Ten Movies with Multiple Modeled Acts \nof Violence Over Time",
+       subtitle = "Modeled Acts w/ At Least One Firearm Instance",
+       x = "Year",
+       y = "Multiple Modeled Acts of Violence (Rates)") +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+   # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+```
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# cdc mortality ggplots
+# Homicide and Assault deaths Over Time 
+cdc_death_per_yr <- ggplot(data = cdc_core, aes(x = Year, y = `Deaths per Year`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Homicide and Assault Deaths Over Time",
+       x = "Year",
+       y = "Number of Homicide and Assault Deaths") +
+  theme_tufte() +
+   # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# cdc Homicide and Assaults death Over Time LOG
+cdc_death_per_yr_log <- ggplot(data = cdc_core, aes(x = Year, y = log(`Deaths per Year`))) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Homicide and Assault Deaths Over Time (LOG)",
+       x = "Year",
+       y = "Homicide and Assault Deaths (LOG)") +
+  theme_tufte() +
+   # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+```
+
+##   
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# visualization of ggplots (call gg objects)
+# cdc movie rates plots
+# cdc_sing
+# cdc_multi
+# cdc_sing_gun
+# cdc_multi_gun
+grid.arrange(cdc_sing,cdc_multi,cdc_sing_gun,cdc_multi_gun)
+```
+
+## 
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# cdc yearly assault injury counts plots
+#cdc_death_per_yr
+
+# cdc yearly assault injury counts LOG plots
+#cdc_death_per_yr_log
+grid.arrange(cdc_death_per_yr,cdc_death_per_yr_log, ncol = 2)
+```
+
+### Section 2
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+```
+
+### Test First regression for AR and UR    
+Base linear model with prime variables of interest:   
+*Multiple Acts w/G* (IV) and *Deaths per Year* (DV)  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# new df for lm
+cdc_lm <- cdc_core
+cdc_lm.ts <- ts(cdc_lm)
+
+# LM Regression
+# perform a dms_multi naive regression
+cdc_model <- lm(`Deaths per Year` ~ `Multiple Acts w/G` + Year, data = cdc_lm)
+
+# print the summary of the model
+tab_model(cdc_model)
+
+```
+
+### Test for autocorrelation in the errors  
+em = residuals from the base linear model  
+Lag <= 4  
+Seems AR4 is present.  
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# check for AR 
+# residuals
+em <- cdc_model$resid
+#min(em)
+#max(em)
+acf(em,xlim =c(0,10), col = "red", lwd =2)
+pacf(em,xlim =c(0,10), col = "red", lwd =2)
+plot(em)
+
+# durbin-watson test auto* correlation (strongest evidence for AR4)
+dwt(cdc_model, max.lag = 5)
+durbinWatsonTest(cdc_model, max.lag=5)
+
+# breusch-Godfrey test serial* correlation AR PRESENT
+bgtest(cdc_model)
+```
+
+### Test for unit roots  
+Seems UR is present  
+Adding drift or trend (p<0.05)  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+##### CHECK FOR UNIT ROOTS #### seems like there is UR
+# Dickey-Fuller
+# augmented Dickey-Fuller test
+adfTest(cdc_lm.ts[,"Deaths per Year"], lags = 0)
+adfTest(cdc_lm.ts[,"Deaths per Year"], lags = 1)
+# augmented Dickey-Fuller w/ DRIFT
+adfTest(cdc_lm.ts[,"Deaths per Year"], lags = 0,type="c")
+# augmented Dickey-Fuller w/ TREND
+adfTest(cdc_lm.ts[,"Deaths per Year"], lags = 0,type="ct")
+
+#  Dickey-Fuller test unit root
+summary(ur.df(cdc_lm.ts[,"Deaths per Year"], lags = 0, type="trend"))
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# set function
+# First differencing function from QMSS package
+firstD <- function(var, group, df){
+  bad <- (missing(group) & !missing(df))
+  if (bad) stop("if df is specified then group must also be specified")
+
+  fD <- function(j){ c(NA, diff(j)) }
+
+  var.is.alone <- missing(group) & missing(df)
+
+  if (var.is.alone) {
+    return(fD(var))
+    }
+  if (missing(df)){
+    V <- var
+    G <- group }
+  else{
+    V <- df[, deparse(substitute(var))]
+    G <- df[, deparse(substitute(group))]
+  }
+
+  G <- list(G)
+  D.var <- by(V, G, fD)
+  unlist(D.var)
+  }
+```
+
+### Section 3
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# set df
+# get first differences for vars
+cdc_lm_FD <- cdc_lm %>%
+  summarise(Year = Year,
+            `Single Act FD` = firstD(cdc_lm[,"Single Act"]),
+            `Multiple Acts FD` = firstD(cdc_lm[,"Multiple Acts"]),
+            `Single Act w/G FD` = firstD(cdc_lm[,"Single Act w/G"]),
+            `Multiple Acts w/G FD` = firstD(cdc_lm[,"Multiple Acts w/G"]),
+            `Deaths per Year FD` = firstD(cdc_lm[,"Deaths per Year"]),
+            `GDP in Billions FD` = firstD(cdc_lm[,"GDP in Billions"]),
+            `FA Weapons Ban FD` = firstD(cdc_lm[,"FA Weapons Ban"]),
+            `Major US Military Involvement FD` = firstD(cdc_lm[,"Major US Military Involvement"]))
+
+# merge by "Year"
+cdc_lm_Total <- merge(cdc_lm,cdc_lm_FD, by = "Year")
+
+# convert to ts objects
+cdc_lm_TFD.ts <- ts(cdc_lm_Total)
+```
+
+### Multiple Modelings with at least one incident with GUN
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# Deaths Over Time First Differences
+# LM Regression
+# perform a sas naive regression w/ time trend var
+cdc_model <- lm(`Deaths per Year FD` ~ `Multiple Acts w/G FD` + Year, data = cdc_lm_Total)
+
+# perform some cdc multiple regressions
+cdc_cntrl1 <- lm(`Deaths per Year FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD`, data = cdc_lm_Total)
+
+cdc_cntrl2 <- lm(`Deaths per Year FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = cdc_lm_Total)
+cdc_cntrl3 <- lm(`Deaths per Year FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = cdc_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(cdc_model)
+summary(cdc_cntrl1)
+summary(cdc_cntrl2)
+summary(cdc_cntrl3)
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# Model Table
+models <- list(cdc_model,cdc_cntrl1,cdc_cntrl2,cdc_cntrl3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+
+### Multiple Modeling incidents NO GUN
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# Deaths Over Time First Differences
+# LM Regression
+# perform a sas naive regression w/ time trend var
+cdc_model <- lm(`Deaths per Year FD` ~ `Multiple Acts FD` + Year, data = cdc_lm_Total)
+
+# perform some cdc multiple regressions
+cdc_cntrl1 <- lm(`Deaths per Year FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD`, data = cdc_lm_Total)
+
+cdc_cntrl2 <- lm(`Deaths per Year FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = cdc_lm_Total)
+cdc_cntrl3 <- lm(`Deaths per Year FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = cdc_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(cdc_model)
+summary(cdc_cntrl1)
+summary(cdc_cntrl2)
+summary(cdc_cntrl3)
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# Model Table
+models <- list(cdc_model,cdc_cntrl1,cdc_cntrl2,cdc_cntrl3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+
+### Single Modeling incident with GUN
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# Deaths Over Time First Differences
+# LM Regression
+# perform a sas naive regression w/ time trend var
+cdc_model <- lm(`Deaths per Year FD` ~ `Single Act w/G FD` + Year, data = cdc_lm_Total)
+
+# perform some cdc multiple regressions
+cdc_cntrl1 <- lm(`Deaths per Year FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD`, data = cdc_lm_Total)
+
+cdc_cntrl2 <- lm(`Deaths per Year FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = cdc_lm_Total)
+cdc_cntrl3 <- lm(`Deaths per Year FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = cdc_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(cdc_model)
+summary(cdc_cntrl1)
+summary(cdc_cntrl2)
+summary(cdc_cntrl3)
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# Model Table
+models <- list(cdc_model,cdc_cntrl1,cdc_cntrl2,cdc_cntrl3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+
+### Single Modeling incident NO GUN
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# Deaths Over Time First Differences
+# LM Regression
+# perform a sas naive regression w/ time trend var
+cdc_model <- lm(`Deaths per Year FD` ~ `Single Act FD` + Year, data = cdc_lm_Total)
+
+# perform some cdc_multi multiple regressions
+cdc_cntrl1 <- lm(`Deaths per Year FD` ~ `Single Act FD` + Year + `GDP in Billions FD`, data = cdc_lm_Total)
+
+cdc_cntrl2 <- lm(`Deaths per Year FD` ~ `Single Act FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = cdc_lm_Total)
+cdc_cntrl3 <- lm(`Deaths per Year FD` ~ `Single Act FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = cdc_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(cdc_model)
+summary(cdc_cntrl1)
+summary(cdc_cntrl2)
+summary(cdc_cntrl3)
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# CDC
+# Model Table
+models <- list(cdc_model,cdc_cntrl1,cdc_cntrl2,cdc_cntrl3)
+       
+tab_model(models,show.ci = FALSE)
+```

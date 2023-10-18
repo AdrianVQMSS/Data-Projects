@@ -1,0 +1,51 @@
+---
+title: "Appendix 4:" 
+subtitle: "List of Top Ten Movies 1961-2021"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+## load packages
+require(readxl)
+require(data.table)
+require(tidyverse)
+require(dplyr)
+require(car)
+require(lmtest)
+require(sandwich)
+require(psych)
+require(tseries)
+require(fUnitRoots)
+require(urca)
+require(TSA)
+require(forecast)
+require(ggplot2)
+require(ggthemes)
+require(corrplot)
+require(sjPlot)
+require(gridExtra)
+```
+
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# TTM
+# read in data files
+# Top Ten Movies 1961-2021
+
+TTM <- read_excel("/Users/adrianvarallyay/Desktop/Grad School/QMSS Folders/Thesis/Thesis violence project/Data/film_data/Data/AV_Rated_Movies_df.xlsx")
+
+TTM <- TTM[,c(2,9,3,12,8,7,10,11,13)]
+  
+TTM <- TTM %>%
+  rename(Rank = Rank_Corrected,
+         `IMDB Score` = imdbRating) %>%
+  arrange(`Rank`) %>%
+  arrange(`Rank Year`)
+    
+tab_df(TTM)
+
+```

@@ -1,0 +1,872 @@
+---
+title: "Appendix 2b:" 
+subtitle: "Firearm Injury Surveilance (FIS) Analysis Results"
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+
+```{r setup, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+## load packages
+require(readxl)
+require(data.table)
+require(tidyverse)
+require(dplyr)
+require(car)
+require(lmtest)
+require(sandwich)
+require(psych)
+require(tseries)
+require(fUnitRoots)
+require(urca)
+require(TSA)
+require(forecast)
+require(ggplot2)
+require(ggthemes)
+require(corrplot)
+require(sjPlot)
+require(gridExtra)
+```
+
+
+```{r eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+# FIS
+# read in .tsv data files
+# Firearm Injury Surveillance Study 1993-2018
+fis <- read.table("/Data/FIS_film_9320_rates.tsv",header=TRUE, sep="\t")
+```
+
+### Section 1   
+```{r eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+# FIS
+# df set
+# vars and correlation
+fis_core <- fis[,c(1,8:11,14:16,35:37)]
+
+#rename vars
+fis_core <- fis_core %>%
+  rename(`Single Act` = single_rate,
+         `Multiple Acts` = multiple_rate,
+         `Single Act w/G` = single_rate_gun,
+         `Multiple Acts w/G` = multiple_rate_gun,
+         `Assault Injuries` = assaults_per_yr,
+         `Gun Injuries` = gunshot_wounds_per_yr,
+         `Gun Injuries/Assault` = gunshot_assault_ratio,
+         `GDP in Billions` = GDP.in.Billions,
+         `FA Weapons Ban` = FAWB..tighten.,
+         `Major US Military Involvement` = Major.military.involvement)
+
+# aggregate and get means
+fis_core <- aggregate(subset(fis_core, sel = -Year), list(year = fis_core$Year), mean, na.rm=T)
+fis_core <- fis_core %>%
+  rename(Year = year)
+
+# make into ts object
+fis_core_ts <- fis_core
+```
+
+### Descriptive Statistics  
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# correlations and visualizations
+# descriptives
+tab_df(describe(fis_core_ts),
+  title = "Firearm Injury Surveillance",
+  show.rownames = TRUE)
+```
+
+### Correlations  
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# create a fis correlation matrix
+fis_core_matrix <- cor(fis_core_ts, use = "complete.obs")
+tab_corr(fis_core_matrix)
+```
+
+### Visualizations  
+### Correlation Table  
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# create a fis correlation plot
+corrplot(fis_core_matrix[c(1:5,9:11),c(1:5,9:11)], method = "number",number.cex = 0.8, tl.col = "black", tl.cex = 0.95, tl.offset = 0.2)
+```
+
+### Independent and Dependent Variable Time Trends 
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# fis objects for gg plot
+# Single Act
+fis_single <- fis_core %>%
+  group_by(Year,`Single Act`) %>%
+  distinct(.keep_all = FALSE) %>%
+  summarise()
+
+# Multiple Act
+fis_multi <- fis_core %>%
+  group_by(Year,`Multiple Acts`) %>%
+  distinct(.keep_all = FALSE) %>%
+  summarise()
+
+# Single Act w/Gun
+fis_single_gun <- fis_core %>%
+  group_by(Year,`Single Act w/G`) %>%
+  distinct(.keep_all = FALSE) %>%
+  summarise()
+
+# Multiple Act w/Gun
+fis_multi_gun <- fis_core %>%
+  group_by(Year,`Multiple Acts w/G`) %>%
+  distinct(.keep_all = FALSE) %>%
+  summarise()
+```
+
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# fis movie ggplots
+# Single Act
+fis_sing <- ggplot(data = fis_single, aes(x = Year, y = `Single Act`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Rates of Top Ten Movies with a Single Modeled Act \nof Violence Over Time",
+       subtitle = "Modeled Act w/o Firearm",
+       x = "Year",
+       y = "Single Modeled Act of Violence (Rates)") +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Multiple Act
+fis_multi <- ggplot(data = fis_multi, aes(x = Year, y = `Multiple Acts`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Rates of Top Ten Movies with Multiple Modeled Acts \nof Violence Over Time",
+       subtitle = "Modeled Acts w/o Firearms",
+       x = "Year",
+       y = "Multiple Modeled Acts of Violence (Rates)") +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Single Act w/Gun
+fis_sing_gun <- ggplot(data = fis_single_gun, aes(x = Year, y = `Single Act w/G`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Rates of Top Ten Movies with a Single Modeled Act \nof Violence Over Time",
+       subtitle = "Modeled Act w/ Firearm",
+       x = "Year",
+       y = "Single Modeled Acts of Violence (Rates)") +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Multiple Act w/Gun
+fis_multi_gun <- ggplot(data = fis_multi_gun, aes(x = Year, y = `Multiple Acts w/G`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Rates of Top Ten Movies with Multiple Modeled Acts of \nViolence Over Time",
+       subtitle = "Modeled Acts w/ At Least One Firearm Instance",
+       x = "Year",
+       y = "Multiple Modeled Acts of Violence (Rates)") +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.1)) +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+```
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# fis gun injuries ggplots
+# Incidents of Assault Injuries
+fis_assault_per_yr <- ggplot(data = fis_core, aes(x = Year, y = `Assault Injuries`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Assault Injury Incidents Over Time",
+       x = "Year",
+       y = "Number of Assault Injury Incidents") +
+  theme_tufte() +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Gun Injuries during Assaults 
+fis_inj_ass_per_yr <- ggplot(data = fis_core, aes(x = Year, y = `Gun Injuries`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Gun Injuries During Assaults Over Time",
+       x = "Year",
+       y = "Number of Gun Injuries") +
+  theme_tufte() +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Average gun injuries per assault Over Time
+fis_gun_inj_per_ass <- ggplot(data = fis_core, aes(x = Year, y = `Gun Injuries/Assault`)) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7)+
+  labs(title = "Average Gun Injuries per Assault Over Time",
+       x = "Year",
+       y = "Average Gun Injuries per Assault") +
+  theme_tufte() +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = -0.4,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# fis gun injuries LOG ggplots
+# Incidents of Assault Injuries (LOG)
+fis_assault_per_yr_log <- ggplot(data = fis_core, aes(x = Year, y = log(`Assault Injuries`))) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Assault Injuries Incidents Over Time (LOG)",
+       x = "Year",
+       y = "Number of Assault Injury Incidents (LOG)") +
+  theme_tufte() +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Incidents of Gun Injuries during Assaults (LOG)
+fis_inj_ass_per_yr_log <- ggplot(data = fis_core, aes(x = Year, y = log(`Gun Injuries`))) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Gun Injuries During Assaults Over Time (LOG)",
+       x = "Year",
+       y = "Number of Gun Injuries (LOG)") +
+  theme_tufte() +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = 0.07,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+
+# Average gun injuries per assault injuries Over Time (LOG)
+fis_gun_inj_per_ass_log <- ggplot(data = fis_core, aes(x = Year, y = log(`Gun Injuries/Assault`))) +
+  geom_line(color = "black", size = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red", size = 0.7) +
+  labs(title = "Average Gun Injuries per Assault Over Time (LOG)",
+       x = "Year",
+       y = "Average Gun Injuries per Assault (LOG)") +
+  theme_tufte() +
+  # Add dotted lines to mark the start and end of weapons ban
+  geom_vline(xintercept = 1994, linetype = "dotted", color = "grey", size = 0.7) +
+  geom_vline(xintercept = 2004, linetype = "dotted", color = "grey", size = 0.7) +
+  annotate("text", x = 1999, y = -0.4,color = "black", label = "Firearm Weapons Ban", size = 1.8) +
+  theme(text = element_text(size = 8),
+  axis.text = element_text(size = 7),
+  axis.title = element_text(size = 7),
+  legend.title = element_text(size = 8))
+```
+
+##   
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE, fig.width = 7.5}
+# FIS
+# visualization of ggplots (call gg objects)
+# fis movie rates plots
+# fis_sing
+# fis_multi
+# fis_sing_gun
+# fis_multi_gun
+grid.arrange(fis_sing,fis_multi,fis_sing_gun,fis_multi_gun)
+```
+
+## 
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE, fig.width = 7.5}
+# fis yearly assault injury counts plots
+# fis_assault_per_yr
+# fis_inj_ass_per_yr
+# fis_gun_inj_per_ass
+grid.arrange(fis_assault_per_yr,fis_inj_ass_per_yr,fis_gun_inj_per_ass, ncol = 2)
+
+# fis yearly assault injury counts LOG plots
+# fis_assault_per_yr_log
+# fis_inj_ass_per_yr_log
+# fis_gun_inj_per_ass_log
+grid.arrange(fis_assault_per_yr_log,fis_inj_ass_per_yr_log,fis_gun_inj_per_ass_log, ncol = 2)
+```
+
+### Section 2
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE, fig.width = 7.5}
+```
+
+
+### Test First regression for AR and UR  
+Base linear model with prime variables of interest:  
+*Multiple Acts w/G* (IV) and *Assault Injuries* (DV)  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# new df for lm
+fis_lm <- fis_core
+fis_lm.ts <- ts(fis_lm)
+
+# LM Regression
+# perform a fis_multi naive regression
+fis_model <- lm(`Assault Injuries` ~ `Multiple Acts w/G` + Year, data = fis_lm)
+
+# print the summary of the model
+tab_model(fis_model)
+
+```
+
+### Test for autocorrelation in the errors  
+em = residuals from the base linear model  
+Lag <= 2  
+Seems AR2 is present.
+
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# check for AR 
+# residuals
+em <- fis_model$resid
+#min(em)
+#max(em)
+acf(em,xlim =c(0,40), col = "red", lwd =2)
+pacf(em,xlim =c(0,40), col = "red", lwd =2)
+plot(em)
+
+# durbin-watson test auto* correlation 
+dwt(fis_model, max.lag = 2)
+durbinWatsonTest(fis_model, max.lag=2)
+
+# breusch-Godfrey test serial* correlation 
+bgtest(fis_model)
+```
+
+### Test for unit roots  
+Seems UR is present  
+Adding drift or trend (p>0.05)  
+```{r, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+##### CHECK FOR UNIT ROOTS #### seems like there is UR
+# Dickey-Fuller
+# augmented Dickey-Fuller test
+adfTest(fis_lm.ts[,"Assault Injuries"], lags = 2)
+# augmented Dickey-Fuller w/ DRIFT
+adfTest(fis_lm.ts[,"Assault Injuries"], lags = 2,type="c")
+# augmented Dickey-Fuller w/ TREND
+adfTest(fis_lm.ts[,"Assault Injuries"], lags = 2,type="ct")
+
+#  Dickey-Fuller test unit root
+summary(ur.df(fis_lm.ts[,"Assault Injuries"], lags = 2, type="trend"))
+```
+
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# set function
+# First differencing function from QMSS package
+firstD <- function(var, group, df){
+  bad <- (missing(group) & !missing(df))
+  if (bad) stop("if df is specified then group must also be specified")
+
+  fD <- function(j){ c(NA, diff(j)) }
+
+  var.is.alone <- missing(group) & missing(df)
+
+  if (var.is.alone) {
+    return(fD(var))
+    }
+  if (missing(df)){
+    V <- var
+    G <- group }
+  else{
+    V <- df[, deparse(substitute(var))]
+    G <- df[, deparse(substitute(group))]
+  }
+
+  G <- list(G)
+  D.var <- by(V, G, fD)
+  unlist(D.var)
+  }
+```
+
+### Section 3
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS 
+# set df
+# get first differences for vars
+fis_lm_FD <- fis_lm %>%
+  summarise(Year = Year,
+            `Single Act FD` = firstD(fis_lm[,"Single Act"]),
+            `Multiple Acts FD` = firstD(fis_lm[,"Multiple Acts"]),
+            `Single Act w/G FD` = firstD(fis_lm[,"Single Act w/G"]),
+            `Multiple Acts w/G FD` = firstD(fis_lm[,"Multiple Acts w/G"]),
+            `Assault FD` = firstD(fis_lm[,"Assault Injuries"]),
+            `Gun Injuries FD` = firstD(fis_lm[,"Gun Injuries"]),
+            `Gun Injuries/Assault FD` = firstD(fis_lm[,"Gun Injuries/Assault"]),
+            `GDP in Billions FD` = firstD(fis_lm[,"GDP in Billions"]),
+            `FA Weapons Ban FD` = firstD(fis_lm[,"FA Weapons Ban"]),
+            `Major US Military Involvement FD` = firstD(fis_lm[,"Major US Military Involvement"]))
+
+# merge by "Year"
+fis_lm_Total <- merge(fis_lm,fis_lm_FD, by = "Year")
+
+# convert to ts objects
+fis_lm_TFD.ts <- ts(fis_lm_Total)
+```
+
+
+### Multiple Modelings with at least one incident with GUN
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Assault First Differencing
+# LM Regression FD
+# perform a fis naive regression w/ time trend var
+fis_model <- lm(`Assault FD` ~ `Multiple Acts w/G FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrl1 <- lm(`Assault FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrl2 <- lm(`Assault FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrl3 <- lm(`Assault FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_model)
+summary(fis_cntrl1)
+summary(fis_cntrl2)
+summary(fis_cntrl3)
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_model,fis_cntrl1,fis_cntrl2,fis_cntrl3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Gun Injuries First Differencing
+# LM Regression
+# perform a fis naive regression w/ time trend var
+fis_modelG <- lm(`Gun Injuries FD` ~ `Multiple Acts w/G FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrlG1 <- lm(`Gun Injuries FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrlG2 <- lm(`Gun Injuries FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrlG3 <- lm(`Gun Injuries FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_modelG)
+summary(fis_cntrlG1)
+summary(fis_cntrlG2)
+summary(fis_cntrlG3)
+
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_modelG,fis_cntrlG1,fis_cntrlG2,fis_cntrlG3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Gun Injuries/Assault First Differencing
+# LM Regression
+# perform a fis naive regression w/ time trend var
+fis_modelI <- lm(`Gun Injuries/Assault FD` ~ `Multiple Acts w/G FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrlI1 <- lm(`Gun Injuries/Assault FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrlI2 <- lm(`Gun Injuries/Assault FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrlI3 <- lm(`Gun Injuries/Assault FD` ~ `Multiple Acts w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_modelI)
+summary(fis_cntrlI1)
+summary(fis_cntrlI2)
+summary(fis_cntrlI3)
+
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_modelI,fis_cntrlI1,fis_cntrlI2,fis_cntrlI3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+
+### Multiple Modeling incidents NO GUN
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Assault First Differencing
+# LM Regression 
+# perform a fis naive regression w/ time trend var
+fis_model <- lm(`Assault FD` ~ `Multiple Acts FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrl1 <- lm(`Assault FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrl2 <- lm(`Assault FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrl3 <- lm(`Assault FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_model)
+summary(fis_cntrl1)
+summary(fis_cntrl2)
+summary(fis_cntrl3)
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_model,fis_cntrl1,fis_cntrl2,fis_cntrl3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Gun Injuries First Differencing
+# LM Regression 
+# perform a fis naive regression w/ time trend var
+fis_modelG <- lm(`Gun Injuries FD` ~ `Multiple Acts FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrlG1 <- lm(`Gun Injuries FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrlG2 <- lm(`Gun Injuries FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrlG3 <- lm(`Gun Injuries FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_modelG)
+summary(fis_cntrlG1)
+summary(fis_cntrlG2)
+summary(fis_cntrlG3)
+
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_modelG,fis_cntrlG1,fis_cntrlG2,fis_cntrlG3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Gun Injuries/Assault First Differencing
+# LM Regression
+# perform a fis naive regression w/ time trend var
+fis_modelI <- lm(`Gun Injuries/Assault FD` ~ `Multiple Acts FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrlI1 <- lm(`Gun Injuries/Assault FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrlI2 <- lm(`Gun Injuries/Assault FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrlI3 <- lm(`Gun Injuries/Assault FD` ~ `Multiple Acts FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_modelI)
+summary(fis_cntrlI1)
+summary(fis_cntrlI2)
+summary(fis_cntrlI3)
+
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_modelI,fis_cntrlI1,fis_cntrlI2,fis_cntrlI3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+
+### Single Modeling incident with GUN
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS 
+# Assault First Differencing
+# LM Regression
+# perform a fis naive regression w/ time trend var
+fis_model <- lm(`Assault FD` ~ `Single Act w/G FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrl1 <- lm(`Assault FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrl2 <- lm(`Assault FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrl3 <- lm(`Assault FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_model)
+summary(fis_cntrl1)
+summary(fis_cntrl2)
+summary(fis_cntrl3)
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_model,fis_cntrl1,fis_cntrl2,fis_cntrl3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS 
+# Gun Injuries First Differences
+# LM Regression
+# perform a fis naive regression w/ time trend var
+fis_modelG <- lm(`Gun Injuries FD` ~ `Single Act w/G FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrlG1 <- lm(`Gun Injuries FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrlG2 <- lm(`Gun Injuries FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrlG3 <- lm(`Gun Injuries FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_modelG)
+summary(fis_cntrlG1)
+summary(fis_cntrlG2)
+summary(fis_cntrlG3)
+
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_modelG,fis_cntrlG1,fis_cntrlG2,fis_cntrlG3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS 
+# Gun Injuries/Assault First Differencing
+# LM Regression
+# perform a fis naive regression w/ time trend var
+fis_modelI <- lm(`Gun Injuries/Assault FD` ~ `Single Act w/G FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrlI1 <- lm(`Gun Injuries/Assault FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrlI2 <- lm(`Gun Injuries/Assault FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrlI3 <- lm(`Gun Injuries/Assault FD` ~ `Single Act w/G FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_modelI)
+summary(fis_cntrlI1)
+summary(fis_cntrlI2)
+summary(fis_cntrlI3)
+
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_modelI,fis_cntrlI1,fis_cntrlI2,fis_cntrlI3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+
+### Single Modeling incident NO GUN
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS 
+# Assault First Differencing
+# LM Regression 
+# perform a fis naive regression w/ time trend var
+fis_model <- lm(`Assault FD` ~ `Single Act FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrl1 <- lm(`Assault FD` ~ `Single Act FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrl2 <- lm(`Assault FD` ~ `Single Act FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrl3 <- lm(`Assault FD` ~ `Single Act FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_model)
+summary(fis_cntrl1)
+summary(fis_cntrl2)
+summary(fis_cntrl3)
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_model,fis_cntrl1,fis_cntrl2,fis_cntrl3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS 
+# Gun Injuries First Differencing
+# LM Regression
+# perform a fis naive regression w/ time trend var
+fis_modelG <- lm(`Gun Injuries FD` ~ `Single Act FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrlG1 <- lm(`Gun Injuries FD` ~ `Single Act FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrlG2 <- lm(`Gun Injuries FD` ~ `Single Act FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrlG3 <- lm(`Gun Injuries FD` ~ `Single Act FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_modelG)
+summary(fis_cntrlG1)
+summary(fis_cntrlG2)
+summary(fis_cntrlG3)
+
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_modelG,fis_cntrlG1,fis_cntrlG2,fis_cntrlG3)
+       
+tab_model(models,show.ci = FALSE)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS 
+# Gun Injuries/Assault First Differencing
+# LM Regression
+# perform a fis naive regression w/ time trend var
+fis_modelI <- lm(`Gun Injuries/Assault FD` ~ `Single Act FD` + Year, data = fis_lm_Total)
+
+# perform some fis multiple regressions
+fis_cntrlI1 <- lm(`Gun Injuries/Assault FD` ~ `Single Act FD` + Year + `GDP in Billions FD`, data = fis_lm_Total)
+
+fis_cntrlI2 <- lm(`Gun Injuries/Assault FD` ~ `Single Act FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD`, 
+                  data = fis_lm_Total)
+fis_cntrlI3 <- lm(`Gun Injuries/Assault FD` ~ `Single Act FD` + Year + `GDP in Billions FD` + `FA Weapons Ban FD` + 
+                    `Major US Military Involvement FD`, data = fis_lm_Total)
+```
+
+```{r, include = FALSE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# print the summary of the models
+summary(fis_modelI)
+summary(fis_cntrlI1)
+summary(fis_cntrlI2)
+summary(fis_cntrlI3)
+
+```
+
+##   
+```{r, include = TRUE, echo=FALSE, eval=TRUE, message=FALSE, warning=FALSE}
+# FIS
+# Model Table
+models <- list(fis_modelI,fis_cntrlI1,fis_cntrlI2,fis_cntrlI3)
+       
+tab_model(models,show.ci = FALSE)
+```
