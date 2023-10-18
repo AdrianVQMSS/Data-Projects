@@ -1,4 +1,4 @@
-# Columbia GSAS QMSS Data Visualization Group Project
+# Columbia University GSAS QMSS Data Visualization Group Project
 ## Changes in the Video Game Landscape
 ### Shiny App Dashboard
 
