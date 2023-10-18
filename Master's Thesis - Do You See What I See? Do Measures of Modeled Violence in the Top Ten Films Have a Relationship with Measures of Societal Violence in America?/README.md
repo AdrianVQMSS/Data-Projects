@@ -8,4 +8,4 @@ Master Thesis examined the relationship between rates of modeled violence/gun vi
 •	While statistical significance was not achieved, the study highlights that certain violence measures in the top ten movies are increasing annually, paralleling the rising rates of real-world violence  
 
 ### IMPORTANT NOTE:   
-1 dataset, from the Uniform Crime Report, was too large of a file to upload, even after compresion. The zip file was still 298.5 MB after compression. Unfortunately, this data set couldn't be uploaded to the repository.
+1 dataset, from the Uniform Crime Report, was too large of a file to upload, even after compression. The zip file was still 298.5 MB after compression. Unfortunately, this data set couldn't be uploaded to the repository.
