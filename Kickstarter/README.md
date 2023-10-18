@@ -1,4 +1,4 @@
-# Columbia GSAS QMSS Data Visualization
+# Columbia University GSAS QMSS Data Visualization
 
 ## Kickstarter Campaign Categories and Listing Sentiments
 
