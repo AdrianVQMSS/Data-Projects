@@ -1,8 +1,7 @@
 # Columbia University GSAS QMSS Data Visualization
 ## Billboard Charts
 
-Artist's Billboard  
-Top 20 Songs  
+Artist's Billboard Top 20 Songs  
 Top Artists  
 Audio Features  
 
