@@ -1,6 +1,6 @@
 # Columbia University GSAS QMSS Master's Thesis
 
-Master Thesis (PDF include in repo) examined the relationship between rates of modeled violence/gun violence in the top ten films from 1961 to 2021 and rates of violence/gun violence in American Society.
+Master Thesis (PDF included in repo) examined the relationship between rates of modeled violence/gun violence in the top ten films from 1961 to 2021 and rates of violence/gun violence in American Society.
 
 •	Conducted web scraping, utilized the Open Movie Database API, and coded violence and firearm usage in 610 movies (the top ten films from 1960 to 2021)  
 •	Conducted a comprehensive literature review on culture, violence, and cultural products  
